@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Flash Button with Large Dummy QR</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <button id="startButton" class="orange-button">Tap to Start</button>
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <div class="camera-qr-container" style="display: none;">
+            <video id="video" autoplay playsinline></video>
+            <img id="dummyQR" src="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://example.com" alt="Dummy QR Code">
+        </div>
+        <canvas id="canvas" style="display: none;"></canvas>
+    </div>
+    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
