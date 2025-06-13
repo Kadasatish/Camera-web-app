@@ -1,0 +1,126 @@
+const startButton = document.getElementById('startButton');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const dummyQR = document.getElementById('dummyQR');
+const cameraQrContainer = document.querySelector('.camera-qr-container');
+const errorMessage = document.getElementById('errorMessage');
+const ctx = canvas.getContext('2d');
+let stream = null;
+let flashStream = null;
+
+// నిర్దిష్ట QR కోడ్ డేటా (డమ్మీ QR కోడ్‌లోని డేటా)
+const specificQRData = "https://example.com";
+
+startButton.addEventListener('click', async () => {
+    try {
+        // ఎర్రర్ మెసేజ్ దాచడం
+        errorMessage.style.display = 'none';
+
+        // ఫ్రంట్ కెమెరా యాక్సెస్ అడగడం
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        video.srcObject = stream;
+        cameraQrContainer.style.display = 'flex';
+        startButton.style.display = 'none';
+        canvas.width = 640;
+        canvas.height = 480;
+
+        // బ్యాక్ కెమెరా ఫ్లాష్ కోసం యాక్సెస్
+        try {
+            flashStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        } catch (err) {
+            console.warn('బ్యాక్ కెమెరా యాక్సెస్ లో ఎర్రర్:', err);
+            errorMessage.textContent = 'బ్యాక్ కెమెరా ఫ్లాష్ యాక్సెస్ సాధ్యం కాలేదు. డివైస్ సపోర్ట్ లేకపోవచ్చు.';
+            errorMessage.style.display = 'block';
+        }
+
+        scanQRCode();
+    } catch (err) {
+        console.error('ఫ్రంట్ కెమెరా యాక్సెస్ లో ఎర్రర్:', err);
+        let errorText = 'కెమెరాను యాక్సెస్ చేయలేకపోయాము. ';
+        if (err.name === 'NotAllowedError') {
+            errorText += 'దయచేసి కెమెరా అనుమతులను ఇవ్వండి.';
+        } else if (err.name === 'NotFoundError') {
+            errorText += 'డివైస్‌లో కెమెరా కనుగొనబడలేదు.';
+        } else {
+            errorText += 'ఎర్రర్: ' + err.message;
+        }
+        errorMessage.textContent = errorText;
+        errorMessage.style.display = 'block';
+    }
+});
+
+function scanQRCode() {
+    if (!stream) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (code && code.data === specificQRData) {
+        // QR కోడ్ డేటా మ్యాచ్ అయితే ఫ్రంట్ కెమెరా ఆఫ్ చేసి ఫ్లాష్ ట్రిగ్గర్ చేయడం
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+            video.srcObject = null;
+            video.style.display = 'none';
+        }
+        triggerFlash();
+    } else if (code) {
+        // QR కోడ్ గుర్తించబడింది కానీ డేటా మ్యాచ్ కాలేదు
+        console.log('QR కోడ్ డేటా మ్యాచ్ కాలేదు:', code.data);
+        requestAnimationFrame(scanQRCode);
+    } else {
+        // QR కోడ్ గుర్తించబడలేదు, కొనసాగించు
+        requestAnimationFrame(scanQRCode);
+    }
+}
+
+async function triggerFlash() {
+    try {
+        if (!flashStream) {
+            console.warn('బ్యాక్ కెమెరా ఫ్లాష్ యాక్సెస్ లేదు');
+            errorMessage.textContent = 'ఫ్లాష్ లైట్ యాక్సెస్ సాధ్యం కాలేదు.';
+            errorMessage.style.display = 'block';
+            reset();
+            return;
+        }
+
+        const track = flashStream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+
+        if (capabilities.torch) {
+            // బ్యాక్ కెమెరా ఫ్లాష్ ఆన్ చేయడం
+            await track.applyConstraints({ advanced: [{ torch: true }] });
+            setTimeout(async () => {
+                // ఫ్లాష్ ఆఫ్ చేయడం
+                await track.applyConstraints({ advanced: [{ torch: false }] });
+                // రీసెట్ చేయడం
+                reset();
+            }, 60000); // 1 నిమిషం (60 సెకన్లు) పాటు ఫ్లాష్
+        } else {
+            console.warn('ఈ డివైస్‌లో ఫ్లాష్ సపోర్ట్ లేదు');
+            errorMessage.textContent = 'ఈ డివైస్ ఫ్లాష్ లైట్‌ను సపోర్ట్ చేయదు.';
+            errorMessage.style.display = 'block';
+            reset();
+        }
+    } catch (err) {
+        console.error('ఫ్లాష్ కంట్రోల్‌లో ఎర్రర్:', err);
+        errorMessage.textContent = 'ఫ్లాష్ లైట్ కంట్రోల్‌లో ఎర్రర్: ' + err.message;
+        errorMessage.style.display = 'block';
+        reset();
+    }
+}
+
+function reset() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    if (flashStream) {
+        flashStream.getTracks().forEach(track => track.stop());
+        flashStream = null;
+    }
+    cameraQrContainer.style.display = 'none';
+    startButton.style.display = 'block';
+    errorMessage.style.display = 'none';
+}
